@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Ultra-Hassas Bilişsel Simülasyon & Nöro-Akustik Platform v20.0</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #09080f; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #e0e0e0; }
+        #scene { width: 100%; height: 100%; display: block; }
+        #hud, #demographicsPanel, #formulaPanel, #recomPanel {
+            position: absolute; background: rgba(15, 13, 26, 0.92); padding: 15px;
+            border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.12);
+            backdrop-filter: blur(8px); z-index: 10; transition: transform 0.3s ease, opacity 0.3s ease;
+        }
+        #hud { top: 15px; left: 15px; pointer-events: none; min-width: 230px; }
+        #demographicsPanel { top: 15px; right: 15px; width: 340px; max-height: 92vh; overflow-y: auto; }
+        #demographicsPanel.hidden { transform: translateX(110%); opacity: 0; pointer-events: none; }
+        
+        #formulaPanel { bottom: 15px; left: 15px; width: 380px; max-height: 250px; overflow-y: auto; font-size: 11px; line-height: 1.4; color: #b8acff; display: none; }
+        #formulaPanel.active { display: block; }
+
+        #recomPanel { bottom: 15px; right: 15px; width: 340px; font-size: 12px; color: #e0e0e0; border-color: #9c8cff; display: none; }
+        #recomPanel.active { display: block; }
+
+        .metric { font-size: 13px; margin-bottom: 6px; letter-spacing: 0.5px; }
+        .metric span { font-weight: bold; color: #9c8cff; }
+        .input-group { margin-bottom: 8px; display: flex; flex-direction: column; }
+        .input-group label { font-size: 11px; margin-bottom: 3px; color: #b8acff; font-weight: 500; }
+        .input-group input, .input-group select { 
+            background: #1a1728; border: 1px solid #4a407a; color: white; 
+            padding: 5px 8px; border-radius: 4px; font-size: 11px;
+        }
+        .row-2 { display: flex; gap: 6px; }
+        .row-2 > * { flex: 1; }
+        
+        button {
+            width: 100%; background: #9c8cff; border: none; color: #09080f;
+            padding: 8px 12px; font-weight: bold; border-radius: 6px; cursor: pointer; margin-top: 8px;
+            font-size: 12px; transition: background 0.2s;
+        }
+        button:hover { background: #b8acff; }
+        
+        .top-btn-group { position: absolute; top: 15px; right: 370px; z-index: 20; display: flex; gap: 8px; }
+        .floating-btn {
+            background: rgba(15, 13, 26, 0.88); border: 1px solid #4a407a; color: #9c8cff;
+            padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; backdrop-filter: blur(6px);
+            width: auto; margin: 0; font-size: 11px;
+        }
+        .floating-btn:hover { background: #1a1728; color: #b8acff; }
+
+        #maxTriggerBtn {
+            background: #ff4c4c; color: white; margin-top: 10px; border: 1px solid #ff9c9c;
+            box-shadow: 0 0 10px rgba(255, 76, 76, 0.5); font-size: 12px; text-transform: uppercase;
+        }
+        #maxTriggerBtn:hover { background: #ff2a2a; box-shadow: 0 0 20px rgba(255, 76, 76, 0.8); }
+        .hud-alert { border: 1px solid #ff4c4c !important; box-shadow: 0 0 15px rgba(255,76,76,0.3); background: rgba(40, 10, 10, 0.88) !important; }
+        .sec-title { font-size: 11px; font-weight: bold; color: #ffd166; margin: 10px 0 4px 0; border-bottom: 1px solid #3d3460; padding-bottom: 2px; }
+    </style>
+</head>
+<body>
+
+    <div class="top-btn-group">
+        <button class="floating-btn" id="toggleFormulaBtn">Formüller & Kaynaklar</button>
+        <button class="floating-btn" id="togglePanelBtn">Paneli Gizle</button>
+    </div>
+
+    <div id="hud">
+        <div class="metric">Bütünleşme ($\Phi$): <span id="phiReadout">0.00</span></div>
+        <div class="metric">Serbest Enerji ($\mathcal{F}$): <span id="fReadout">0.0</span></div>
+        <div class="metric">Ağ Kapasitesi ($\mathcal{C}$): <span id="cReadout">0.000</span></div>
+        <div class="metric" style="margin-top:10px; border-top:1px solid #4a407a; padding-top:6px;">
+            Sistem Durumu:<br><span id="loadReadout" style="color:#4cff8c; font-size:13px;">Optimum</span>
+        </div>
+    </div>
+
+    <div id="formulaPanel">
+        <div style="font-weight:bold; color:#fff; margin-bottom:5px; border-bottom:1px solid #4a407a; padding-bottom:3px;">Nöro-Akustik Model Matrisi</div>
+        <div><b>1. Ginzburg-Landau:</b> ∂ψ/∂t = (ω_i + i κ I_eff)ψ + ν ∇·(P ∇ψ) - [(R²-ψ₀²)/T_eff]ψ + η</div>
+        <div style="margin-top:3px;"><b>2. Dynamic Noise (T_eff):</b> T_0 × (1 + Cortisol) / HRV</div>
+        <div style="margin-top:3px;"><b>3. Target BPM:</b> 60 + 20(1-Φ) - 3.0(Fatigue) - 2.0(Cortisol) + 1.2(f_env - 10)</div>
+    </div>
+
+    <div id="recomPanel">
+        <div style="font-weight:bold; color:#9c8cff; margin-bottom:6px; border-bottom:1px solid #4a407a; padding-bottom:4px;">🎧 Ultra-Kişisel Akustik Reçete</div>
+        <div id="recomText">Girdi verileri işleniyor...</div>
+    </div>
+
+    <div id="demographicsPanel">
+        <div class="metric" style="margin-bottom:6px; border-bottom:1px solid #4a407a; padding-bottom:4px; font-weight:bold;">🧬 Ultra-Hassas Biyometrik Veri Formu</div>
+        
+        <div class="sec-title">1. Biyometrik & Otonom Sinir Sistemi</div>
+        <div class="input-group row-2">
+            <div>
+                <label>Otonom Durum (HRV):</label>
+                <select id="inpHrv">
+                    <option value="low" selected>Düşük HRV (Stres/Sempatik)</option>
+                    <option value="high">Yüksek HRV (Sakin/Parasempatik)</option>
+                </select>
+            </div>
+            <div>
+                <label>Hormonal Biyo-Mod:</label>
+                <select id="inpHormone">
+                    <option value="cortisol" selected>Yüksek Kortizol (Kaygı)</option>
+                    <option value="low_dopamine">Düşük Dopamin (Odaksızlık)</option>
+                    <option value="balanced">Dengeli Dopamin/Serotonin</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="sec-title">2. Kronobiyoloji & Biyoritim</div>
+        <div class="input-group row-2">
+            <div>
+                <label>Uyanıklı Süresi (Saat):</label>
+                <input type="number" id="inpAwake" value="6" min="1" max="24">
+            </div>
+            <div>
+                <label>Uyku Kalitesi (1-5):</label>
+                <input type="number" id="inpSleep" value="3" min="1" max="5">
+            </div>
+        </div>
+
+        <div class="sec-title">3. Bilişsel Yük & Mental Profil</div>
+        <div class="input-group row-2">
+            <div>
+                <label>Yaş / IQ:</label>
+                <div style="display:flex; gap:4px;">
+                    <input type="number" id="inpAge" value="25" style="width:50%" title="Yaş">
+                    <input type="number" id="inpIQ" value="170" style="width:50%" title="IQ">
+                </div>
+            </div>
+            <div>
+                <label>Zihinsel Yorgunluk (1-10):</label>
+                <input type="number" id="inpFatigue" value="7" min="1" max="10">
+            </div>
+        </div>
+
+        <div class="input-group">
+            <label>Zihinsel Gürültü Döngüsü (Mental Loop 1-10):</label>
+            <input type="range" id="inpLoop" min="1" max="10" value="8">
+        </div>
+
+        <div class="sec-title">4. Çevre, Akustik & Donanım</div>
+        <div class="input-group row-2">
+            <div>
+                <label>Ortam Gürültüsü (Hz):</label>
+                <input type="number" id="inpEnvFreq" value="24" min="5" max="40">
+            </div>
+            <div>
+                <label>Kulaklık Tipi:</label>
+                <select id="inpHeadphone">
+                    <option value="anc" selected>ANC (Aktif Engelleme)</option>
+                    <option value="in_ear">Kulak İçi (In-Ear)</option>
+                    <option value="speaker">Açık Hoparlör</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="sec-title">5. Tercihler & Hedef Mod</div>
+        <div class="input-group row-2">
+            <div>
+                <label>Hedef Zihinsel Durum:</label>
+                <select id="inpTargetState">
+                    <option value="flow" selected>Derin Odak (Flow)</option>
+                    <option value="calm">Sakinleşme / Deşarj</option>
+                    <option value="creative">Yaratıcı Düşünce</option>
+                </select>
+            </div>
+            <div>
+                <label>Müzik Türü & Dil:</label>
+                <div style="display:flex; gap:4px;">
+                    <select id="inpGenre" style="width:50%">
+                        <option value="ambient">Ambient</option>
+                        <option value="lofi">Lo-Fi</option>
+                        <option value="acoustic" selected>Akustik</option>
+                    </select>
+                    <select id="inpLang" style="width:50%">
+                        <option value="tr">TR</option>
+                        <option value="en" selected>EN</option>
+                        <option value="fr">FR</option>
+                        <option value="de">DE</option>
+                        <option value="es">ES</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <button id="applyBtn">Hesapla & Reçeteyi Güncelle</button>
+        <button id="maxTriggerBtn">MAX-TRIGGER (Hiper Şok)</button>
+    </div>
+
+    <canvas id="scene"></canvas>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+    (function () {
+      'use strict';
+
+      var N = 50, DOMAIN = 12, DX = DOMAIN / (N - 1);
+      var PSI0 = 1.0, R_CLAMP = 4.0, SUBSTEPS = 6, DT = 0.01;
+      
+      var psiRe = new Float32Array(N * N), psiIm = new Float32Array(N * N);
+      var P = new Float32Array(N * N), newPsiRe = new Float32Array(N * N);
+      var newPsiIm = new Float32Array(N * N), newP = new Float32Array(N * N);
+      var R = new Float32Array(N * N), inputField = new Float32Array(N * N);
+      var omega = new Float32Array(N * N), baseOmega = new Float32Array(N * N);
+
+      var lsParams = {
+        kappa: 0.65, nu: 0.45, mu_base: 0.25, T: 0.6, pMax: 5.0, Cw: 3.5, alpha: 0.85, beta: 0.35, gamma: 0.12
+      };
+      
+      var triggerState = { active: false, timer: 0, cooldown: 0 };
+
+      // Kapsamlı Nöro-Akustik Müzik Veritabanı
+      var musicDb = {
+        tr: {
+            ambient: { title: "Mercan Dede - 800 (Binaural Edit)", baseBpm: 58, band: "Theta" },
+            lofi: { title: "İncesaz - Mazi Kalbimde (Lo-Fi Remaster)", baseBpm: 65, band: "Alpha" },
+            acoustic: { title: "Mor ve Ötesi - Araf (Akustik / 432 Hz)", baseBpm: 62, band: "Alpha" }
+        },
+        en: {
+            ambient: { title: "Tycho - A Walk (432 Hz Modülasyon)", baseBpm: 55, band: "Theta" },
+            lofi: { title: "Kiasmos - Looped (Deep Focus Cut)", baseBpm: 70, band: "Alpha" },
+            acoustic: { title: "Radiohead - Pyramid Song (Binaural Match)", baseBpm: 52, band: "Theta" }
+        },
+        fr: {
+            ambient: { title: "Ravel - Pavane pour une infante défunte", baseBpm: 56, band: "Theta" },
+            lofi: { title: "FKJ - Ylang Ylang (Solo Piano)", baseBpm: 68, band: "Alpha" },
+            acoustic: { title: "Stromae - Formidable (Acoustic Unplugged)", baseBpm: 64, band: "Alpha" }
+        },
+        de: {
+            ambient: { title: "Nils Frahm - Says (Acoustic Resonance)", baseBpm: 54, band: "Theta" },
+            lofi: { title: "Schiller - Das Glockenspiel (Ambient Chill)", baseBpm: 72, band: "Alpha" },
+            acoustic: { title: "AnnenMayKantereit - Barfuß am Klavier", baseBpm: 60, band: "Alpha" }
+        },
+        es: {
+            ambient: { title: "Ludovico Einaudi - Nuvole Bianche", baseBpm: 58, band: "Theta" },
+            lofi: { title: "Chambao - Ahí Estás Tú (Lo-Fi Edit)", baseBpm: 72, band: "Alpha" },
+            acoustic: { title: "Natalia Lafourcade - Hasta la Raíz", baseBpm: 66, band: "Alpha" }
+        }
+      };
+
+      // UI Etkileşim Yönetimi
+      var panelVisible = true;
+      document.getElementById('togglePanelBtn').addEventListener('click', function() {
+          panelVisible = !panelVisible;
+          var panel = document.getElementById('demographicsPanel');
+          if (panelVisible) { panel.classList.remove('hidden'); this.textContent = "Paneli Gizle"; } 
+          else { panel.classList.add('hidden'); this.textContent = "Paneli Göster"; }
+      });
+
+      var formulaVisible = false;
+      document.getElementById('toggleFormulaBtn').addEventListener('click', function() {
+          formulaVisible = !formulaVisible;
+          var fPanel = document.getElementById('formulaPanel');
+          if (formulaVisible) { fPanel.classList.add('active'); this.textContent = "Formülleri Gizle"; } 
+          else { fPanel.classList.remove('active'); this.textContent = "Formüller & Kaynaklar"; }
+      });
+
+      function initSim() {
+        for (var i = 0; i < N; i++) {
+          for (var j = 0; j < N; j++) {
+            var k = i * N + j;
+            var r0 = 0.2 + 0.1 * Math.random();
+            var th0 = Math.random() * Math.PI * 2;
+            psiRe[k] = r0 * Math.cos(th0); psiIm[k] = r0 * Math.sin(th0);
+            P[k] = 0.3 + 0.1 * Math.random();
+            inputField[k] = 0;
+            baseOmega[k] = 1.2 + 0.8 * (Math.sin(i * 0.3) * Math.cos(j * 0.25));
+            omega[k] = baseOmega[k];
+          }
+        }
+      }
+
+      function generateUltraAcousticPrescription(phi) {
+          var fatigue = parseFloat(document.getElementById('inpFatigue').value);
+          var envFreq = parseFloat(document.getElementById('inpEnvFreq').value);
+          var hrv = document.getElementById('inpHrv').value;
+          var hormone = document.getElementById('inpHormone').value;
+          var targetState = document.getElementById('inpTargetState').value;
+          var lang = document.getElementById('inpLang').value;
+          var genre = document.getElementById('inpGenre').value;
+          var loopCount = parseFloat(document.getElementById('inpLoop').value);
+
+          var cortisolIdx = (hormone === 'cortisol') ? 2.5 : (hormone === 'low_dopamine' ? 0.5 : 1.0);
+          var hrvCoeff = (hrv === 'low') ? 1.3 : 0.8;
+
+          var targetBpm = Math.round(60 + 20 * (1.0 - phi) - 3.0 * fatigue - 2.0 * cortisolIdx + 1.2 * (envFreq - 10));
+          if (targetState === 'calm') targetBpm -= 6;
+          if (targetState === 'flow') targetBpm += 4;
+          
+          if (targetBpm < 45) targetBpm = 45;
+          if (targetBpm > 95) targetBpm = 95;
+
+          var track = musicDb[lang][genre];
+          var bandName = targetBpm < 58 ? "Theta Bandı (4-8 Hz)" : (targetBpm < 78 ? "Alpha Bandı (8-12 Hz)" : "Beta Bandı (13-30 Hz)");
+
+          var recomEl = document.getElementById('recomText');
+          document.getElementById('recomPanel').classList.add('active');
+
+          recomEl.innerHTML = `
+            <b>Önerilen Eser:</b> ${track.title}<br>
+            <b>Hesaplanan İdeal BPM:</b> ${targetBpm} BPM<br>
+            <b>Hedef Rezonans Bandı:</b> ${bandName}<br>
+            <b>Nöro-Fizyolojik Etki:</b> ${loopCount > 6 ? 'Aşırı zihinsel döngüleri sönümlendirir' : 'Dengeli akış sağlar'}, Kortizolü düşürüp parasempatik sistemi tetikler.
+          `;
+      }
+
+      function applyUltraDemographics() {
+          var age = parseFloat(document.getElementById('inpAge').value);
+          var iq = parseFloat(document.getElementById('inpIQ').value);
+          var fatigue = parseFloat(document.getElementById('inpFatigue').value);
+          var hrv = document.getElementById('inpHrv').value;
+          var hormone = document.getElementById('inpHormone').value;
+
+          var hrvFactor = (hrv === 'low') ? 1.8 : 0.7;
+          var cortFactor = (hormone === 'cortisol') ? 2.2 : 0.9;
+
+          lsParams.Cw = (3.0 + ((iq - 100) * 0.08) - ((age - 25) * 0.02)) / (1.0 + fatigue * 0.1);
+          lsParams.T = 0.5 * hrvFactor * cortFactor;
+          lsParams.kappa = 0.7 * (iq / 100.0) * (hormone === 'low_dopamine' ? 0.6 : 1.1);
+
+          var m = computeMetrics();
+          generateUltraAcousticPrescription(m.phi);
+      }
+
+      document.getElementById('applyBtn').addEventListener('click', applyUltraDemographics);
+
+      document.getElementById('maxTriggerBtn').addEventListener('click', function() {
+          if (triggerState.cooldown > 0) return;
+          triggerState.active = true; triggerState.timer = 60; 
+          document.getElementById('hud').classList.add('hud-alert');
+          for (var i = 0; i < N*N; i++) {
+              if (Math.random() > 0.25) inputField[i] += 15.0 + Math.random() * 8.0;
+          }
+      });
+
+      function idxClamp(i, n) { return i < 0 ? 0 : (i >= n ? n - 1 : i); }
+
+      function stepOnce(dt) {
+        var invDx2 = 1 / (DX * DX), inv2Dx = 1 / (2 * DX);
+        var currentT = lsParams.T, currentCw = lsParams.Cw;
+        
+        if (triggerState.active) {
+            currentCw = 120.0; currentT = 0.02;   
+            for (var o = 0; o < N*N; o++) omega[o] = 7.0;
+            triggerState.timer--;
+            if (triggerState.timer <= 0) {
+                triggerState.active = false; triggerState.cooldown = 150; 
+                document.getElementById('hud').classList.remove('hud-alert');
+            }
+        } else if (triggerState.cooldown > 0) {
+            triggerState.cooldown--; currentT = lsParams.T * 4.0; currentCw = lsParams.Cw * 0.2; 
+            for (var o = 0; o < N*N; o++) omega[o] = baseOmega[o] * 0.3;
+        } else {
+            for (var o = 0; o < N*N; o++) omega[o] = baseOmega[o];
+        }
+
+        var noiseAmp = 0.05 * Math.sqrt(Math.max(currentT, 0.05));
+        for (var k0 = 0; k0 < N * N; k0++) R[k0] = Math.sqrt(psiRe[k0] * psiRe[k0] + psiIm[k0] * psiIm[k0]);
+
+        for (var i = 0; i < N; i++) {
+          var iN = idxClamp(i + 1, N), iS = idxClamp(i - 1, N);
+          for (var j = 0; j < N; j++) {
+            var jE = idxClamp(j + 1, N), jW = idxClamp(j - 1, N);
+            var k = i * N + j, kN = iN * N + j, kS = iS * N + j, kE = i * N + jE, kW = i * N + jW;
+
+            var inExt = inputField[k], inEff = 0;
+            if (inExt > 0.01) inEff = inExt * Math.exp(-(inExt * inExt) / (2 * currentCw * currentCw));
+
+            var Pk = P[k];
+            var gradRSq = Math.pow((R[kE] - R[kW]) * inv2Dx, 2) + Math.pow((R[kN] - R[kS]) * inv2Dx, 2);
+            var mu_dynamic = lsParams.mu_base * Math.exp(-lsParams.gamma * 7.0 * Pk);
+
+            var dP = (lsParams.alpha * R[k] * R[k] * inEff) + (lsParams.beta * gradRSq) - (mu_dynamic * Pk);
+            newP[k] = Math.max(0, Math.min(Pk + dt * dP, lsParams.pMax));
+
+            var divPPsiRe = ((P[kE]+Pk)/2 * (psiRe[kE] - psiRe[k]) - (Pk+P[kW])/2 * (psiRe[k] - psiRe[kW]) +
+                             (P[kN]+Pk)/2 * (psiRe[kN] - psiRe[k]) - (Pk+P[kS])/2 * (psiRe[k] - psiRe[kS])) * invDx2;
+            var divPPsiIm = ((P[kE]+Pk)/2 * (psiIm[kE] - psiIm[k]) - (Pk+P[kW])/2 * (psiIm[k] - psiIm[kW]) +
+                             (P[kN]+Pk)/2 * (psiIm[kN] - psiIm[k]) - (Pk+P[kS])/2 * (psiIm[k] - psiIm[kS])) * invDx2;
+
+            var satCoef = (R[k] * R[k] - PSI0 * PSI0) / currentT;
+            if (satCoef > 50) satCoef = 50; if (satCoef < -50) satCoef = -50;
+
+            var dPsiRe = -omega[k] * psiIm[k] + lsParams.kappa * psiRe[k] * inEff + lsParams.nu * divPPsiRe - satCoef * psiRe[k] + noiseAmp * (Math.random() - 0.5);
+            var dPsiIm = omega[k] * psiRe[k] + lsParams.kappa * psiIm[k] * inEff + lsParams.nu * divPPsiIm - satCoef * psiIm[k] + noiseAmp * (Math.random() - 0.5);
+
+            var nRe = psiRe[k] + dt * dPsiRe, nIm = psiIm[k] + dt * dPsiIm;
+            var mag = Math.sqrt(nRe * nRe + nIm * nIm);
+            if (mag > R_CLAMP) { nRe *= R_CLAMP / mag; nIm *= R_CLAMP / mag; }
+            newPsiRe[k] = nRe; newPsiIm[k] = nIm;
+          }
+        }
+        
+        var tmp = psiRe; psiRe = newPsiRe; newPsiRe = tmp;
+        tmp = psiIm; psiIm = newPsiIm; newPsiIm = tmp;
+        tmp = P; P = newP; newP = tmp;
+
+        for (var k2 = 0; k2 < N * N; k2++) {
+          inputField[k2] *= 0.92; if (inputField[k2] < 1e-4) inputField[k2] = 0;
+        }
+      }
+
+      function computeMetrics() {
+        var sumCos = 0, sumSin = 0, Fsum = 0, Esum = 0, cellArea = DX * DX;
+        for (var i = 0; i < N; i++) {
+          for (var j = 0; j < N; j++) {
+            var k = i * N + j;
+            var th = Math.atan2(psiIm[k], psiRe[k]);
+            sumCos += Math.cos(th); sumSin += Math.sin(th);
+            var R2 = psiRe[k] * psiRe[k] + psiIm[k] * psiIm[k];
+            Esum += R2 * cellArea;
+          }
+        }
+        var phi = Math.sqrt(sumCos * sumCos + sumSin * sumSin) / (N * N);
+        return { phi: phi, F: Fsum, C: (phi * phi) / (1 + 0.02 * Esum) };
+      }
+
+      var scene, camera, renderer, controls, mesh, geometry, raycaster, canvasEl, tmpColor;
+
+      function buildGeometry() {
+        var geo = new THREE.BufferGeometry(), positions = new Float32Array(N * N * 3), colors = new Float32Array(N * N * 3), indices = [];
+        for (var i = 0; i < N; i++) {
+          for (var j = 0; j < N; j++) {
+            var k = i * N + j;
+            positions[k * 3] = (j / (N - 1) - 0.5) * DOMAIN; positions[k * 3 + 1] = 0; positions[k * 3 + 2] = (i / (N - 1) - 0.5) * DOMAIN;
+            colors[k * 3] = 0.5; colors[k * 3 + 1] = 0.5; colors[k * 3 + 2] = 0.5;
+          }
+        }
+        for (var ii = 0; ii < N - 1; ii++) {
+          for (var jj = 0; jj < N - 1; jj++) {
+            var a = ii * N + jj, b = ii * N + jj + 1, c = (ii + 1) * N + jj, d = (ii + 1) * N + jj + 1;
+            indices.push(a, b, c, b, d, c);
+          }
+        }
+        geo.setIndex(indices);
+        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        return geo;
+      }
+
+      function updateGeometry() {
+        var posAttr = geometry.attributes.position, colAttr = geometry.attributes.color;
+        for (var k = 0; k < N * N; k++) {
+          posAttr.array[k * 3 + 1] = R[k] * 2.0;
+          var hue = (Math.atan2(psiIm[k], psiRe[k]) / (Math.PI * 2) + 1) % 1;
+          
+          if (triggerState.active) {
+              tmpColor.setHSL(0.0, 1.0, 0.4 + 0.6 * Math.random()); 
+          } else if (triggerState.cooldown > 0) {
+              tmpColor.setHSL(0.1, 0.3, 0.2); 
+          } else {
+              tmpColor.setHSL(hue, 0.8, 0.25 + 0.5 * Math.min(P[k] / lsParams.pMax, 1));
+          }
+          colAttr.array[k * 3] = tmpColor.r; colAttr.array[k * 3 + 1] = tmpColor.g; colAttr.array[k * 3 + 2] = tmpColor.b;
+        }
+        posAttr.needsUpdate = true; colAttr.needsUpdate = true;
+        geometry.computeVertexNormals();
+      }
+
+      function updateHUD(m) {
+          document.getElementById('phiReadout').textContent = m.phi.toFixed(2);
+          document.getElementById('fReadout').textContent = m.F.toFixed(1);
+          document.getElementById('cReadout').textContent = m.C.toFixed(3);
+          
+          var loadEl = document.getElementById('loadReadout');
+          if (triggerState.active) {
+              loadEl.innerHTML = "MAX-TRIGGER: HİPER-FAZ!"; loadEl.style.color = "#ff4c4c";
+          } else if (triggerState.cooldown > 0) {
+              loadEl.innerHTML = "BURNOUT (Refrakter Periyot)"; loadEl.style.color = "#ffd166";
+          } else {
+              loadEl.innerHTML = "Sistem Dengede"; loadEl.style.color = "#4cff8c";
+          }
+      }
+
+      function init() {
+        canvasEl = document.getElementById('scene');
+        tmpColor = new THREE.Color();
+        scene = new THREE.Scene(); scene.fog = new THREE.FogExp2(0x09080f, 0.025);
+        camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 11, 13);
+        
+        renderer = new THREE.WebGLRenderer({ canvas: canvasEl, antialias: true });
+        renderer.setPixelRatio(window.devicePixelRatio); renderer.setSize(window.innerWidth, window.innerHeight);
+        
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; controls.dampingFactor = 0.05;
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        scene.add(new THREE.HemisphereLight(0x9c8cff, 0x120e1e, 0.7));
+        
+        geometry = buildGeometry();
+        mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, metalness: 0.2, roughness: 0.5 }));
+        scene.add(mesh);
+        
+        raycaster = new THREE.Raycaster();
+        initSim();
+
+        applyUltraDemographics();
+        requestAnimationFrame(loop);
+      }
+
+      var frameCount = 0;
+      function loop() {
+        for (var s = 0; s < SUBSTEPS; s++) stepOnce(DT);
+        updateGeometry();
+        controls.update();
+        if (frameCount++ % 8 === 0) updateHUD(computeMetrics());
+        renderer.render(scene, camera);
+        requestAnimationFrame(loop);
+      }
+
+      window.addEventListener('load', init);
+    })();
+    </script>
+</body>
+</html>
