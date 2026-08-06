@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Neuromath - Biyo-Metrik Nöral & Akustik Simülasyon</title>
+    <style>
+        :root {
+            --bg-color: #080a10;
+            --panel-bg: #121520;
+            --text-main: #f1f2f6;
+            --text-muted: #8c98a9;
+            --accent-red: #ff4757;
+            --accent-blue: #1e90ff;
+            --accent-green: #2ed573;
+            --accent-purple: #9b59b6;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        h1 { font-size: 1.3rem; margin: 0 0 4px 0; text-align: center; }
+        .subtitle { color: var(--text-muted); font-size: 0.8rem; margin-bottom: 15px; text-align: center; }
+
+        .dashboard {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .card {
+            background-color: var(--panel-bg);
+            border-radius: 14px;
+            padding: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            text-align: center;
+            border: 1px solid rgba(255,255,255,0.04);
+        }
+
+        .bpm-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 10px 0;
+        }
+
+        #bpm-circle {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            border: 4px solid var(--accent-red);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.2rem;
+            font-weight: 700;
+            box-shadow: 0 0 15px rgba(255, 71, 87, 0.25);
+            transition: transform 0.08s ease;
+        }
+
+        #graphCanvas {
+            width: 100%;
+            height: 90px;
+            background-color: #0d0f18;
+            border-radius: 8px;
+            margin-top: 8px;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .info-title {
+            font-size: 0.95rem;
+            font-weight: 600;
+            margin-bottom: 6px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            padding-bottom: 4px;
+            text-align: left;
+        }
+        .info-title.brain { color: var(--accent-blue); }
+        .info-title.music { color: var(--accent-green); }
+        .info-title.feedback { color: var(--accent-purple); }
+
+        .desc { font-size: 0.85rem; line-height: 1.4; color: #d1d8e0; text-align: left; }
+
+        #status { font-size: 0.85rem; color: #a4b0be; min-height: 18px; margin: 6px 0; }
+
+        button {
+            background-color: var(--accent-red);
+            color: white;
+            border: none;
+            padding: 12px;
+            width: 100%;
+            font-size: 1rem;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        button:active { opacity: 0.85; }
+        #videoElement, #procCanvas { display: none; }
+    </style>
+</head>
+<body>
+
+    <h1>Neuromath Simülasyonu</h1>
+    <div class="subtitle">Nörobilişsel Alan & Kapalı Devre Akustik Geri Besleme</div>
+
+    <div class="dashboard">
+        <!-- Kalp Atışı & PPG Grafik Kartı -->
+        <div class="card">
+            <div id="status">Simülasyonu başlatmak için butona basın</div>
+            <div class="bpm-container">
+                <div id="bpm-circle">--</div>
+            </div>
+            
+            <canvas id="graphCanvas" width="360" height="90"></canvas>
+            
+            <button id="startBtn">Simülasyonu Başlat</button>
+        </div>
+
+        <!-- Bilişsel Alan Analizi (Beyin Durumu) -->
+        <div class="card">
+            <div class="info-title brain">Nöral Alan Durumu (FEM/G-L)</div>
+            <div id="brain-desc" class="desc"><em>Veri bekleniyor...</em></div>
+        </div>
+
+        <!-- Müzik ve Frekans Reçetesi -->
+        <div class="card">
+            <div class="info-title music">Akustik Modülasyon Reçetesi</div>
+            <div id="music-desc" class="desc"><em>Reçete hazırlanıyor...</em></div>
+        </div>
+
+        <!-- Kapalı Devre Geri Besleme Durumu -->
+        <div class="card">
+            <div class="info-title feedback">Kapalı Devre Adaptasyon Döngüsü</div>
+            <div id="feedback-desc" class="desc"><em>Geri besleme aktif değil.</em></div>
+        </div>
+    </div>
+
+    <video id="videoElement" autoplay playsinline></video>
+    <canvas id="procCanvas" width="40" height="40"></canvas>
+
+    <script>
+        const video = document.getElementById('videoElement');
+        const procCanvas = document.getElementById('procCanvas');
+        const procCtx = procCanvas.getContext('2d', { willReadFrequently: true });
+        
+        const graphCanvas = document.getElementById('graphCanvas');
+        const graphCtx = graphCanvas.getContext('2d');
+
+        const bpmDisplay = document.getElementById('bpm-circle');
+        const statusText = document.getElementById('status');
+        const startBtn = document.getElementById('startBtn');
+        const brainDesc = document.getElementById('brain-desc');
+        const musicDesc = document.getElementById('music-desc');
+        const feedbackDesc = document.getElementById('feedback-desc');
+
+        let isRunning = false;
+        let animationId;
+        
+        const rawValues = [];
+        const filteredSignals = [];
+        const peaks = [];
+        const MAX_POINTS = 100;
+        
+        let lastBeatTime = performance.now();
+        let bpmHistory = [];
+        let baselineBPM = null;
+
+        async function startCamera() {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = devices.filter(d => d.kind === 'videoinput');
+            
+            let backCam = videoDevices.find(d => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('rear'));
+            if (!backCam && videoDevices.length > 0) backCam = videoDevices[videoDevices.length - 1];
+
+            const constraints = {
+                video: {
+                    deviceId: backCam ? { exact: backCam.deviceId } : undefined,
+                    facingMode: backCam ? undefined : "environment",
+                    width: { ideal: 320 },
+                    height: { ideal: 240 }
+                }
+            };
+
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            video.srcObject = stream;
+
+            const track = stream.getVideoTracks()[0];
+            try {
+                await track.applyConstraints({ advanced: [{ torch: true }] });
+            } catch (e) {
+                console.log("Flaş manuel tetiklenemedi:", e);
+            }
+        }
+
+        startBtn.addEventListener('click', async () => {
+            if (isRunning) {
+                stopMonitor();
+                return;
+            }
+
+            try {
+                await startCamera();
+                video.onloadedmetadata = () => {
+                    video.play();
+                    isRunning = true;
+                    startBtn.innerText = "Simülasyonu Durdur";
+                    startBtn.style.backgroundColor = "#57606f";
+                    statusText.innerText = "Parmağınızı kameraya HAFİFÇE yerleştirin...";
+                    processLoop();
+                };
+            } catch (err) {
+                statusText.innerText = "Kamera erişim izni reddedildi.";
+                console.error(err);
+            }
+        });
+
+        function stopMonitor() {
+            isRunning = false;
+            startBtn.innerText = "Simülasyonu Başlat";
+            startBtn.style.backgroundColor = "var(--accent-red)";
+            statusText.innerText = "Durduruldu.";
+            bpmDisplay.innerText = "--";
+            brainDesc.innerHTML = "<em>Veri bekleniyor...</em>";
+            musicDesc.innerHTML = "<em>Reçete hazırlanıyor...</em>";
+            feedbackDesc.innerHTML = "<em>Geri besleme aktif değil.</em>";
+            
+            cancelAnimationFrame(animationId);
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(t => t.stop());
+            }
+            rawValues.length = 0;
+            filteredSignals.length = 0;
+            peaks.length = 0;
+            bpmHistory.length = 0;
+            baselineBPM = null;
+            clearGraph();
+        }
+
+        function processLoop() {
+            if (!isRunning) return;
+
+            procCtx.drawImage(video, 0, 0, procCanvas.width, procCanvas.height);
+            const imgData = procCtx.getImageData(0, 0, procCanvas.width, procCanvas.height);
+            
+            let greenSum = 0, redSum = 0, blueSum = 0;
+            const pixels = imgData.data.length / 4;
+
+            for (let i = 0; i < imgData.data.length; i += 4) {
+                redSum += imgData.data[i];
+                greenSum += imgData.data[i+1];
+                blueSum += imgData.data[i+2];
+            }
+
+            const r = redSum / pixels;
+            const g = greenSum / pixels;
+            const b = blueSum / pixels;
+
+            const isFinger = (r > 80 && r > b * 1.2) || (r > 180 && g > 90);
+
+            if (!isFinger) {
+                statusText.innerText = "Parmağınızı lens ve flaş üzerine tamamen kapatın.";
+                bpmDisplay.innerText = "--";
+                rawValues.length = 0;
+                filteredSignals.length = 0;
+                peaks.length = 0;
+                clearGraph();
+            } else {
+                statusText.innerText = "Nöral Alan Kalibre Ediliyor... Sabit tutun.";
+                processPPG(g);
+                drawGraph();
+            }
+
+            animationId = requestAnimationFrame(processLoop);
+        }
+
+        function processPPG(val) {
+            rawValues.push(val);
+            if (rawValues.length > MAX_POINTS) rawValues.shift();
+            if (rawValues.length < 25) return;
+
+            const mean = rawValues.reduce((a, b) => a + b, 0) / rawValues.length;
+            const acSignal = val - mean;
+
+            filteredSignals.push(acSignal);
+            if (filteredSignals.length > MAX_POINTS) filteredSignals.shift();
+
+            const len = filteredSignals.length;
+            if (len < 5) return;
+
+            const prev2 = filteredSignals[len - 3];
+            const prev1 = filteredSignals[len - 2];
+            const curr = filteredSignals[len - 1];
+
+            const maxVal = Math.max(...filteredSignals.slice(-30));
+            const threshold = maxVal * 0.6;
+
+            const now = performance.now();
+            const timeDiff = now - lastBeatTime;
+
+            if (prev1 > prev2 && prev1 > curr && prev1 > threshold) {
+                if (timeDiff > 380 && timeDiff < 1300) {
+                    lastBeatTime = now;
+                    const calculatedBPM = 60000 / timeDiff;
+
+                    bpmHistory.push(calculatedBPM);
+                    if (bpmHistory.length > 6) bpmHistory.shift();
+
+                    peaks.push(len - 2);
+                    if (peaks.length > 10) peaks.shift();
+
+                    bpmDisplay.style.transform = "scale(1.12)";
+                    setTimeout(() => bpmDisplay.style.transform = "scale(1)", 90);
+
+                    const sorted = [...bpmHistory].sort((a, b) => a - b);
+                    const medianBPM = Math.round(sorted[Math.floor(sorted.length / 2)]);
+
+                    bpmDisplay.innerText = medianBPM;
+                    
+                    if (!baselineBPM && bpmHistory.length >= 3) {
+                        baselineBPM = medianBPM;
+                    }
+
+                    if (bpmHistory.length >= 3) {
+                        updateNeuromathEngine(medianBPM);
+                    }
+                }
+            }
+        }
+
+        function drawGraph() {
+            graphCtx.clearRect(0, 0, graphCanvas.width, graphCanvas.height);
+            if (filteredSignals.length < 2) return;
+
+            const min = Math.min(...filteredSignals);
+            const max = Math.max(...filteredSignals);
+            const range = (max - min) || 1;
+
+            graphCtx.beginPath();
+            graphCtx.lineWidth = 2;
+            graphCtx.strokeStyle = "#2ed573";
+
+            const step = graphCanvas.width / (MAX_POINTS - 1);
+
+            for (let i = 0; i < filteredSignals.length; i++) {
+                const normalized = (filteredSignals[i] - min) / range;
+                const x = i * step;
+                const y = graphCanvas.height - (normalized * (graphCanvas.height - 20) + 10);
+
+                if (i === 0) graphCtx.moveTo(x, y);
+                else graphCtx.lineTo(x, y);
+            }
+            graphCtx.stroke();
+
+            peaks.forEach(peakIdx => {
+                if (peakIdx < filteredSignals.length) {
+                    const normalized = (filteredSignals[peakIdx] - min) / range;
+                    const x = peakIdx * step;
+                    const y = graphCanvas.height - (normalized * (graphCanvas.height - 20) + 10);
+
+                    graphCtx.beginPath();
+                    graphCtx.arc(x, y, 4, 0, 2 * Math.PI);
+                    graphCtx.fillStyle = "#ff4757";
+                    graphCtx.fill();
+                }
+            });
+        }
+
+        function clearGraph() {
+            graphCtx.clearRect(0, 0, graphCanvas.width, graphCanvas.height);
+        }
+
+        // Kapalı Devre Geri Beslemeli Nöromatik Motor
+        function updateNeuromathEngine(bpm) {
+            let stateName = "";
+            let waveInfo = "";
+            let musicRec = "";
+            let feedbackText = "";
+
+            if (bpm < 65) {
+                stateName = "Parasempatik Hakimiyet / Rölanti";
+                waveInfo = "Baskın Alan: Teta / Düşük Alfa (4-10 Hz)";
+                musicRec = "Öneri: 432 Hz Solfeggio, Ambient Soundscapes";
+                feedbackText = "Sistem dengede. Zihinsel yorgunluk minimum düzeyde, rölanti modu korunuyor.";
+            } else if (bpm >= 65 && bpm < 90) {
+                stateName = "Optimal Akış Durumu (Flow)";
+                waveInfo = "Baskın Alan: Beta Dalgası (12-22 Hz)";
+                musicRec = "Öneri: 110-120 BPM Enstrümantal Chillhop / Deep House";
+                feedbackText = "Bilişsel yük ideal seviyede. Problem çözme verimliliği en üst banda yakın.";
+            } else {
+                stateName = "Yüksek Uyarılma / Sempatik Stres";
+                waveInfo = "Baskın Alan: Yüksek Beta / Gama (25+ Hz)";
+                musicRec = "Öneri: 60 BPM Barok/Klasik Müzik (Nabız düşürücü akustik modulasyon)";
+                feedbackText = "Geri besleme devrede: Adrenalin eşiği aşıldı. Akustik modülasyon frekansı yavaşlatıcı moda geçirildi.";
+            }
+
+            brainDesc.innerHTML = `<strong>Durum:</strong> ${stateName}<br><strong>Nöral Dinamik:</strong> ${waveInfo}`;
+            musicDesc.innerHTML = `<strong>Akustik Reçete:</strong> ${musicRec}`;
+            
+            if (baselineBPM) {
+                const diff = bpm - baselineBPM;
+                feedbackDesc.innerHTML = `<strong>Adaptasyon:</strong> Başlangıç: ${baselineBPM} BPM | Anlık: ${bpm} BPM (${diff >= 0 ? '+' + diff : diff} fark). Kapalı devre dengeleme aktif.`;
+            } else {
+                feedbackDesc.innerHTML = `<strong>Adaptasyon:</strong> Baseline kalibre ediliyor...`;
+            }
+        }
+    </script>
+</body>
+</html>
