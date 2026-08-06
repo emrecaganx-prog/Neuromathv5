@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gelişmiş Bilişsel & Nöro-Akustik Simülasyon (Sensör Entegreli v21.0)</title>
+    <style>
+        :root {
+            --bg-color: #09080f;
+            --panel-bg: rgba(15, 13, 26, 0.92);
+            --panel-border: rgba(156, 140, 255, 0.25);
+            --accent-purple: #9c8cff;
+            --accent-cyan: #00f2fe;
+            --accent-pink: #ff416c;
+            --accent-green: #00b09b;
+            --accent-yellow: #ffd166;
+            --text-light: #ecebff;
+            --text-dim: #9aa0a6;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--bg-color);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--text-light);
+            font-size: 13px;
+        }
+
+        #canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+
+        /* Responsive Glass Panels */
+        .glass-panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            padding: 12px 14px;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+            transition: all 0.3s ease;
+        }
+
+        /* Top Button Bar */
+        .top-bar {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            z-index: 50;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            justify-content: flex-start;
+            pointer-events: none;
+        }
+
+        .top-bar > * {
+            pointer-events: auto;
+        }
+
+        .btn {
+            background: rgba(30, 25, 50, 0.85);
+            border: 1px solid var(--accent-purple);
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+
+        .btn:hover {
+            background: var(--accent-purple);
+            color: #000;
+            box-shadow: 0 0 12px rgba(156, 140, 255, 0.6);
+        }
+
+        .btn-sensor {
+            border-color: var(--accent-cyan);
+        }
+        .btn-sensor:hover {
+            background: var(--accent-cyan);
+            color: #000;
+            box-shadow: 0 0 12px rgba(0, 242, 254, 0.6);
+        }
+
+        .btn-ppg {
+            border-color: var(--accent-pink);
+        }
+        .btn-ppg:hover {
+            background: var(--accent-pink);
+            color: #fff;
+            box-shadow: 0 0 12px rgba(255, 65, 108, 0.6);
+        }
+
+        /* HUD Overlay */
+        #hud {
+            position: absolute;
+            top: 55px;
+            left: 10px;
+            z-index: 20;
+            width: 240px;
+            pointer-events: none;
+        }
+        #hud > * { pointer-events: auto; }
+
+        .hud-stat {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+            font-size: 11px;
+        }
+        .hud-value {
+            font-weight: bold;
+            color: var(--accent-cyan);
+        }
+
+        /* Settings & Biometrics Sidebar */
+        #demographicsPanel {
+            position: absolute;
+            top: 55px;
+            right: 10px;
+            width: 330px;
+            max-height: calc(100vh - 75px);
+            overflow-y: auto;
+            z-index: 30;
+        }
+
+        /* Formula & Math Panel */
+        #formulaPanel {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            width: 360px;
+            max-height: 280px;
+            overflow-y: auto;
+            z-index: 25;
+            font-size: 11px;
+            line-height: 1.4;
+        }
+
+        /* Recommendations Panel */
+        #recomPanel {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            width: 330px;
+            max-height: 220px;
+            overflow-y: auto;
+            z-index: 24;
+        }
+
+        /* PPG Heart Rate Camera Modal */
+        #ppgModal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(5, 4, 10, 0.88);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            backdrop-filter: blur(8px);
+        }
+
+        .modal-card {
+            background: #120f24;
+            border: 1px solid var(--accent-pink);
+            border-radius: 16px;
+            padding: 20px;
+            width: 90%;
+            max-width: 400px;
+            text-align: center;
+            box-shadow: 0 0 30px rgba(255, 65, 108, 0.3);
+        }
+
+        #ppgVideo { display: none; }
+
+        #ppgCanvas {
+            width: 130px;
+            height: 130px;
+            border-radius: 50%;
+            border: 4px solid var(--accent-pink);
+            margin: 15px auto;
+            background: #000;
+            box-shadow: 0 0 20px rgba(255, 65, 108, 0.4);
+        }
+
+        .section-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--accent-purple);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 8px;
+            border-bottom: 1px solid rgba(156, 140, 255, 0.2);
+            padding-bottom: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .form-group {
+            margin-bottom: 8px;
+        }
+
+        label {
+            display: block;
+            font-size: 10px;
+            color: var(--text-dim);
+            margin-bottom: 3px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 4px;
+            accent-color: var(--accent-purple);
+        }
+
+        select, input[type="number"] {
+            width: 100%;
+            background: rgba(20, 15, 35, 0.9);
+            border: 1px solid rgba(156, 140, 255, 0.3);
+            color: #fff;
+            padding: 5px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            outline: none;
+        }
+
+        .math-expr {
+            font-family: 'Courier New', Courier, monospace;
+            background: rgba(0, 0, 0, 0.4);
+            color: var(--accent-yellow);
+            padding: 6px 8px;
+            border-radius: 6px;
+            margin: 4px 0;
+            word-break: break-all;
+            white-space: pre-wrap;
+        }
+
+        .hidden { display: none !important; }
+
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-thumb { background: var(--panel-border); border-radius: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+
+        /* MOBİL UYUMLULUK (RESPONSIVE FIX) */
+        @media screen and (max-width: 768px) {
+            .top-bar { top: 6px; left: 6px; right: 6px; gap: 4px; }
+            .btn { padding: 5px 8px; font-size: 10px; }
+
+            #hud {
+                top: 50px;
+                left: 6px;
+                width: calc(100% - 12px);
+                max-width: 220px;
+            }
+
+            #demographicsPanel {
+                top: 85px;
+                right: 6px;
+                left: 6px;
+                width: calc(100% - 12px);
+                max-height: 55vh;
+            }
+
+            #formulaPanel {
+                bottom: 6px;
+                left: 6px;
+                right: 6px;
+                width: calc(100% - 12px);
+                max-height: 38vh;
+            }
+
+            #recomPanel {
+                bottom: 6px;
+                left: 6px;
+                right: 6px;
+                width: calc(100% - 12px);
+                max-height: 35vh;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="canvas"></canvas>
+
+    <!-- ÜST KONTROL VE SENSÖR BAR -->
+    <div class="top-bar">
+        <button class="btn btn-sensor" id="btnMicSensor" onclick="toggleMicSensor()">
+            🎙️ Ortam Ses Sensörü (Kapalı)
+        </button>
+        <button class="btn btn-ppg" onclick="openPPGModal()">
+            ❤️ Parmağını Kamera İle Ölç (PPG Nabız/HRV)
+        </button>
+        <button class="btn" onclick="togglePanel('demographicsPanel')">
+            ⚙️ Parametreler
+        </button>
+        <button class="btn" onclick="togglePanel('formulaPanel')">
+            📐 Formüller
+        </button>
+        <button class="btn" onclick="togglePanel('recomPanel')">
+            💡 Reçete
+        </button>
+        <button class="btn" onclick="togglePanel('hud')">
+            📊 HUD Göstergeleri
+        </button>
+    </div>
+
+    <!-- HUD GÖSTERGELERİ -->
+    <div id="hud" class="glass-panel">
+        <div class="section-title">Nöral Durum (HUD)</div>
+        <div class="hud-stat"><span>Dominant Frekans:</span><span id="hudFreq" class="hud-value">14.2 Hz</span></div>
+        <div class="hud-stat"><span>Odaklanma Seviyesi:</span><span id="hudFocus" class="hud-value">78%</span></div>
+        <div class="hud-stat"><span>Bilişsel Yük:</span><span id="hudCognitive" class="hud-value">0.42</span></div>
+        <div class="hud-stat"><span>Dopamin Düzeyi:</span><span id="hudDopamine" class="hud-value">NORMAL</span></div>
+        <div class="hud-stat"><span>Ortam Frekansı:</span><span id="hudEnvFreq" class="hud-value">45 Hz (Manuel)</span></div>
+        <div class="hud-stat"><span>Sensör Nabız / HRV:</span><span id="hudSensorHRV" class="hud-value">Sensör Bekleniyor</span></div>
+    </div>
+
+    <!-- BİYOMETRİK VE PARAMETRE PANELİ -->
+    <div id="demographicsPanel" class="glass-panel">
+        <div class="section-title">
+            <span>Biyometrik & Çevresel Paneli</span>
+            <button class="btn" style="padding: 2px 6px; font-size: 9px;" onclick="togglePanel('demographicsPanel')">✖ Gizle</button>
+        </div>
+
+        <div class="form-group">
+            <label>Yaş Grubu:</label>
+            <select id="inpAge" onchange="updateSimParams()">
+                <option value="young">Genç Yetişkin (18-25)</option>
+                <option value="adult" selected>Yetişkin (26-45)</option>
+                <option value="senior">Kıdemli Yetişkin (46+)</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Nörotip / Bilişsel Profil:</label>
+            <select id="inpNeurotype" onchange="updateSimParams()">
+                <option value="neurotypical" selected>Nörotipik (Standart)</option>
+                <option value="adhd">DEHB (Dikkat Eksikliği & Hiperaktivite)</option>
+                <option value="autism">Otizm Spektrumu / Duyusal Hassasiyet</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Tahmini IQ / Bilişsel Kapasite Skoru:</label>
+            <input type="range" id="inpIQ" min="80" max="150" value="110" oninput="document.getElementById('lblIQ').innerText = this.value; updateSimParams();">
+            <span id="lblIQ" style="float:right; font-size: 10px; color: var(--accent-cyan);">110</span>
+        </div>
+
+        <div class="form-group">
+            <label>Kalp Atış Hızı Değişkenliği (HRV) / Stres:</label>
+            <select id="inpHrv" onchange="updateSimParams()">
+                <option value="high">Yüksek HRV (Sakin / Parasempatik)</option>
+                <option value="medium" selected>Normal HRV (Dengeli)</option>
+                <option value="low">Düşük HRV (Yüksek Stres / Sempatik)</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Kortizol (Stres) Seviyesi [0 - 1]:</label>
+            <input type="range" id="inpCortisol" min="0" max="1" step="0.05" value="0.3" oninput="document.getElementById('lblCortisol').innerText = this.value; updateSimParams();">
+            <span id="lblCortisol" style="float:right; font-size: 10px; color: var(--accent-pink);">0.30</span>
+        </div>
+
+        <div class="form-group">
+            <label>Dopamin / Motivasyon Seviyesi:</label>
+            <select id="inpDopamine" onchange="updateSimParams()">
+                <option value="low">Düşük (Tükenmişlik / Ahedoni)</option>
+                <option value="normal" selected>Normal (Optimal Motivasyon)</option>
+                <option value="high">Yüksek (Aşırı Uyarılmışlık)</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Öğrenme ve Zihinsel Yorgunluk [0 - 1]:</label>
+            <input type="range" id="inpFatigue" min="0" max="1" step="0.05" value="0.2" oninput="document.getElementById('lblFatigue').innerText = this.value; updateSimParams();">
+            <span id="lblFatigue" style="float:right; font-size: 10px; color: var(--accent-yellow);">0.20</span>
+        </div>
+
+        <div class="form-group">
+            <label>Ortam Gürültü Frekansı (Hz) [Mikrofondan Otomatik / Manuel]:</label>
+            <input type="number" id="inpEnvFreq" value="45" min="10" max="1000" onchange="updateSimParams()">
+        </div>
+
+        <div class="form-group">
+            <label>Akustik Ekipman Türü:</label>
+            <select id="inpEquipment" onchange="updateSimParams()">
+                <option value="anc_headphones" selected>Kulaklık (ANC - Aktif Gürültü Engelleme)</option>
+                <option value="in_ear">Kulak İçi Kulaklık (İzolasyonlu)</option>
+                <option value="open_speakers">Açık Hoparlör (Oda Akustiği Etkili)</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- FORMÜLLER VE AKADEMİK MODEL PANELİ -->
+    <div id="formulaPanel" class="glass-panel">
+        <div class="section-title">
+            <span>Formüller ve Nöro-Akustik Metrik</span>
+            <button class="btn" style="padding: 2px 6px; font-size: 9px;" onclick="togglePanel('formulaPanel')">✖ Gizle</button>
+        </div>
+        <p><b>1. Genişletilmiş Ginzburg-Landau Alan Denklemi:</b></p>
+        <div class="math-expr">∂ψ/∂t = (ωᵢ + i·κ·Iₑff)ψ + ν∇·(P∇ψ) - [(R²-ψ₀²)/Tₑff]ψ + η(t)</div>
+        <p style="color: var(--text-dim); font-size: 10px; margin-bottom: 6px;">
+            • <b>Tₑff:</b> Etkin Relaksasyon = T₀ × (1 + Kortizol) × (1 / HRV)<br>
+            • <b>κ:</b> Nöral Duyarlılık = 0.7 × (IQ / 100) × Dopamin_Faktörü
+        </p>
+
+        <p><b>2. Sensör Entegreli Akustik BPM Hesabı:</b></p>
+        <div class="math-expr">BPM_hedef = 60 + 20·(1 - Φ) - 3.0·Yorgunluk - 2.0·Kortizol + 1.2·(f_env - 10)</div>
+        <p style="color: var(--text-dim); font-size: 10px;">
+            • <b>f_env:</b> Mikrofondan FFT ile tespit edilen ortam baskın gürültü frekansı (Hz)
+        </p>
+    </div>
+
+    <!-- REÇETE PANELİ -->
+    <div id="recomPanel" class="glass-panel">
+        <div class="section-title">
+            <span>Kişiselleştirilmiş Akustik Reçete</span>
+            <button class="btn" style="padding: 2px 6px; font-size: 9px;" onclick="togglePanel('recomPanel')">✖ Gizle</button>
+        </div>
+        <div id="recomContent" style="font-size: 11px; line-height: 1.5;">
+            Reçete hesaplanıyor...
+        </div>
+    </div>
+
+    <!-- KAMERA PPG NABIZ / HRV ÖLÇÜM PENCERESİ -->
+    <div id="ppgModal">
+        <div class="modal-card">
+            <h3 style="color: var(--accent-pink); margin-bottom: 8px;">❤️ Kamera İle Nabız & HRV Ölçümü</h3>
+            <p style="font-size: 11px; color: var(--text-dim); margin-bottom: 10px;">
+                Parmağınızı telefon/bilgisayarınızın kamera merceğinin üzerine hafifçe kapatın ve sabit tutun.
+            </p>
+            <video id="ppgVideo" autoplay playsinline muted></video>
+            <canvas id="ppgCanvas" width="100" height="100"></canvas>
+            
+            <div id="ppgStatus" style="font-weight: bold; font-size: 12px; color: var(--accent-cyan); margin-top: 5px;">
+                Kamera Başlatılıyor...
+            </div>
+            <div id="ppgProgress" style="font-size: 11px; color: var(--accent-yellow); margin-top: 4px;">
+                Parmağınızı kameraya tam oturtun.
+            </div>
+
+            <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center;">
+                <button class="btn" onclick="closePPGModal()">İptal / Kapat</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Canvas ve Simülasyon
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        let time = 0;
+        let micAudioCtx = null;
+        let micAnalyser = null;
+        let isMicActive = false;
+
+        // PPG Degiskenleri
+        let ppgStream = null;
+        let ppgInterval = null;
+        let redBuffer = [];
+        let ppgSampleCount = 0;
+        const PPG_TOTAL_SAMPLES = 180; // ~6 saniye tarama
+
+        function togglePanel(panelId) {
+            const p = document.getElementById(panelId);
+            if (p) {
+                p.classList.toggle('hidden');
+            }
+        }
+
+        // 1. MİKROFON ORTAM FREKANS SENSÖRÜ (WEB AUDIO API)
+        async function toggleMicSensor() {
+            const btn = document.getElementById('btnMicSensor');
+            if (isMicActive) {
+                isMicActive = false;
+                if (micAudioCtx) micAudioCtx.close();
+                btn.innerHTML = '🎙️ Ortam Ses Sensörü (Kapalı)';
+                btn.style.borderColor = 'var(--accent-cyan)';
+                return;
+            }
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                micAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const source = micAudioCtx.createMediaStreamSource(stream);
+                micAnalyser = micAudioCtx.createAnalyser();
+                micAnalyser.fftSize = 512;
+                source.connect(micAnalyser);
+
+                isMicActive = true;
+                btn.innerHTML = '🎙️ Sensör Aktif (Dinliyor...)';
+                btn.style.borderColor = 'var(--accent-green)';
+                processMicData();
+            } catch (err) {
+                alert('Mikrofon erişimi sağlanamadı: ' + err.message);
+            }
+        }
+
+        function processMicData() {
+            if (!isMicActive || !micAnalyser) return;
+            const dataArray = new Uint8Array(micAnalyser.frequencyBinCount);
+            micAnalyser.getByteFrequencyData(dataArray);
+
+            let maxVal = 0, maxIndex = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                if (dataArray[i] > maxVal) {
+                    maxVal = dataArray[i];
+                    maxIndex = i;
+                }
+            }
+
+            if (maxVal > 20) {
+                const sampleRate = micAudioCtx.sampleRate;
+                const peakFreq = Math.round(maxIndex * (sampleRate / micAnalyser.fftSize));
+                const clampedFreq = Math.min(Math.max(peakFreq, 10), 500);
+                document.getElementById('inpEnvFreq').value = clampedFreq;
+                document.getElementById('hudEnvFreq').innerText = clampedFreq + ' Hz (Mikrofon Canlı)';
+                updateSimParams();
+            }
+
+            requestAnimationFrame(processMicData);
+        }
+
+        // 2. KAMERA FOTOPLETİSMOGRAFİ (PPG) NABIZ & HRV ÖLÇÜMÜ
+        async function openPPGModal() {
+            const modal = document.getElementById('ppgModal');
+            modal.style.display = 'flex';
+            document.getElementById('ppgStatus').innerText = 'Kamera Başlatılıyor...';
+            document.getElementById('ppgProgress').innerText = 'Parmağınızı kamera merceğine kapatın.';
+            redBuffer = [];
+            ppgSampleCount = 0;
+
+            const video = document.getElementById('ppgVideo');
+
+            try {
+                ppgStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment', width: { ideal: 160 }, height: { ideal: 120 } }
+                });
+                video.srcObject = ppgStream;
+                video.play();
+
+                const ppgCanvas = document.getElementById('ppgCanvas');
+                const ppgCtx = ppgCanvas.getContext('2d');
+
+                ppgInterval = setInterval(() => {
+                    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                        ppgCtx.drawImage(video, 0, 0, 100, 100);
+                        const frame = ppgCtx.getImageData(0, 0, 100, 100);
+                        let redSum = 0;
+                        for (let i = 0; i < frame.data.length; i += 4) {
+                            redSum += frame.data[i];
+                        }
+                        const avgRed = redSum / (frame.data.length / 4);
+                        redBuffer.push(avgRed);
+                        ppgSampleCount++;
+
+                        const progressPct = Math.min(100, Math.round((ppgSampleCount / PPG_TOTAL_SAMPLES) * 100));
+                        document.getElementById('ppgProgress').innerText = `%${progressPct} Tamamlandı - Parmağınızı Sabit Tutun`;
+
+                        if (avgRed < 90) {
+                            document.getElementById('ppgStatus').innerText = '⚠️ Işık Yetersiz / Parmağınızı Merceğe Tam Bastırın!';
+                            document.getElementById('ppgStatus').style.color = 'var(--accent-yellow)';
+                        } else {
+                            document.getElementById('ppgStatus').innerText = '🟢 Nabız Sinyali Taranıyor...';
+                            document.getElementById('ppgStatus').style.color = 'var(--accent-green)';
+                        }
+
+                        if (ppgSampleCount >= PPG_TOTAL_SAMPLES) {
+                            calculatePPGResults();
+                        }
+                    }
+                }, 33);
+            } catch (err) {
+                document.getElementById('ppgStatus').innerText = 'Kamera Hatası: ' + err.message;
+            }
+        }
+
+        function calculatePPGResults() {
+            clearInterval(ppgInterval);
+            if (ppgStream) ppgStream.getTracks().forEach(track => track.stop());
+
+            let peaks = [];
+            for (let i = 1; i < redBuffer.length - 1; i++) {
+                if (redBuffer[i] > redBuffer[i - 1] && redBuffer[i] > redBuffer[i + 1]) {
+                    peaks.push(i);
+                }
+            }
+
+            let bpm = 72;
+            let hrvCategory = 'medium';
+            let cortisolEst = 0.3;
+
+            if (peaks.length > 3) {
+                let intervals = [];
+                for (let i = 1; i < peaks.length; i++) {
+                    intervals.push((peaks[i] - peaks[i - 1]) * 33);
+                }
+                const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+                bpm = Math.round(60000 / avgInterval);
+                bpm = Math.min(Math.max(bpm, 50), 135);
+
+                const variance = intervals.reduce((a, b) => a + Math.pow(b - avgInterval, 2), 0) / intervals.length;
+                const sdnn = Math.sqrt(variance);
+
+                if (sdnn < 22) {
+                    hrvCategory = 'low';
+                    cortisolEst = 0.65;
+                } else if (sdnn > 45) {
+                    hrvCategory = 'high';
+                    cortisolEst = 0.15;
+                } else {
+                    hrvCategory = 'medium';
+                    cortisolEst = 0.35;
+                }
+            }
+
+            // Arayüze aktar
+            document.getElementById('inpHrv').value = hrvCategory;
+            document.getElementById('inpCortisol').value = cortisolEst;
+            document.getElementById('lblCortisol').innerText = cortisolEst.toFixed(2);
+            document.getElementById('hudSensorHRV').innerText = `${bpm} BPM | HRV: ${hrvCategory.toUpperCase()}`;
+
+            updateSimParams();
+
+            document.getElementById('ppgStatus').innerText = `✅ Ölçüm Tamamlandı! Nabız: ${bpm} BPM`;
+            document.getElementById('ppgProgress').innerText = `HRV: ${hrvCategory.toUpperCase()} | Tahmini Stres: ${cortisolEst}`;
+
+            setTimeout(() => { closePPGModal(); }, 2500);
+        }
+
+        function closePPGModal() {
+            clearInterval(ppgInterval);
+            if (ppgStream) ppgStream.getTracks().forEach(track => track.stop());
+            document.getElementById('ppgModal').style.display = 'none';
+        }
+
+        // SİMÜLASYON HESAPLAMA VE GÜNCELLEME
+        function updateSimParams() {
+            const iq = parseFloat(document.getElementById('inpIQ').value);
+            const hrv = document.getElementById('inpHrv').value;
+            const cortisol = parseFloat(document.getElementById('inpCortisol').value);
+            const fatigue = parseFloat(document.getElementById('inpFatigue').value);
+            const envFreq = parseFloat(document.getElementById('inpEnvFreq').value);
+            const neurotype = document.getElementById('inpNeurotype').value;
+
+            let phi = 0.82;
+            let targetBpm = 60 + 20 * (1 - phi) - 3.0 * fatigue - 2.0 * cortisol + 1.2 * (envFreq - 10);
+            targetBpm = Math.round(Math.max(50, Math.min(targetBpm, 110)));
+
+            // HUD Güncelle
+            document.getElementById('hudFreq').innerText = (12.5 + (iq / 150) * 4).toFixed(1) + ' Hz';
+            document.getElementById('hudFocus').innerText = Math.round((1 - cortisol * 0.4 - fatigue * 0.3) * 100) + '%';
+            document.getElementById('hudCognitive').innerText = (0.3 + fatigue * 0.5 + cortisol * 0.2).toFixed(2);
+            document.getElementById('hudDopamine').innerText = document.getElementById('inpDopamine').value.toUpperCase();
+
+            // Reçete Oluştur
+            let isoFreq = neurotype === 'adhd' ? '18 Hz (Beta - Yüksek Odak)' : (neurotype === 'autism' ? '10 Hz (Alfa - Rahatlama)' : '14 Hz (SMR - Denge)');
+            let recomText = `
+                • <b>Hedef İşitsel Tempo:</b> <span style="color:var(--accent-cyan); font-weight:bold;">${targetBpm} BPM</span><br>
+                • <b>İzokronik Frekans Reçetesi:</b> ${isoFreq}<br>
+                • <b>Gürültü Rengi:</b> ${cortisol > 0.5 ? 'Pembe Gürültü (Pink Noise - Stres Azaltıcı)' : 'Kahverengi Gürültü (Brown Noise - Derin Odak)'}<br>
+                • <b>Durum Analizi:</b> ${hrv === 'low' ? '⚠️ Yüksek sempatik yük (stres) var. 4-7-8 nefes egzersizi önerilir.' : '🟢 Nöral stres düzeyi dengeli.'}
+            `;
+            document.getElementById('recomContent').innerHTML = recomText;
+        }
+
+        // DİNAMİK NÖRAL ALAN ANİMASYONU
+        function animate() {
+            time += 0.02;
+            ctx.fillStyle = 'rgba(9, 8, 15, 0.2)';
+            ctx.fillRect(0, 0, width, height);
+
+            const cy = height / 2;
+            const iq = parseFloat(document.getElementById('inpIQ').value);
+            const cortisol = parseFloat(document.getElementById('inpCortisol').value);
+
+            for (let w = 0; w < 5; w++) {
+                ctx.beginPath();
+                ctx.strokeStyle = w % 2 === 0 ? 'rgba(156, 140, 255, 0.4)' : 'rgba(0, 242, 254, 0.3)';
+                ctx.lineWidth = 1.5 + w * 0.5;
+
+                for (let x = 0; x < width; x += 10) {
+                    const wave1 = Math.sin(x * 0.005 + time * (1 + w * 0.2)) * (30 + iq * 0.2);
+                    const wave2 = Math.cos(x * 0.01 - time * 0.8) * (15 + cortisol * 20);
+                    const y = cy + wave1 + wave2 + (w - 2) * 45;
+
+                    if (x === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Başlat
+        updateSimParams();
+        animate();
+    </script>
+</body>
+</html>
