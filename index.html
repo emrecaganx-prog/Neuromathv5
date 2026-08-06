@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Biyo-Metrik Dashboard: Nabız, Zihin ve Müzik</title>
+    <style>
+        :root {
+            --bg-color: #0f111a;
+            --panel-bg: #1e2130;
+            --text-main: #f1f2f6;
+            --text-muted: #a4b0be;
+            --accent-red: #ff4757;
+            --accent-blue: #1e90ff;
+            --accent-green: #2ed573;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 5px;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+
+        .dashboard {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .card {
+            background-color: var(--panel-bg);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+
+        /* Nabız Halkası */
+        .bpm-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 15px 0;
+        }
+
+        #bpm-circle {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            border: 6px solid var(--accent-red);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            font-weight: bold;
+            box-shadow: 0 0 15px rgba(255, 71, 87, 0.3);
+            transition: transform 0.1s ease-out;
+        }
+
+        /* Bilgi Alanları */
+        .info-title {
+            font-size: 1.1rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 5px;
+        }
+
+        .info-title.brain { color: var(--accent-blue); }
+        .info-title.music { color: var(--accent-green); }
+
+        .desc {
+            font-size: 0.95rem;
+            line-height: 1.5;
+            color: #dfe4ea;
+        }
+
+        #status {
+            font-size: 1rem;
+            color: #ced6e0;
+            min-height: 24px;
+            margin: 10px 0;
+        }
+
+        button {
+            background-color: var(--accent-red);
+            color: white;
+            border: none;
+            padding: 15px;
+            width: 100%;
+            font-size: 1.2rem;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 10px;
+            transition: background 0.2s;
+        }
+
+        button:active { background-color: #ff6b81; }
+
+        #videoElement, #canvasElement { display: none; }
+    </style>
+</head>
+<body>
+
+    <h1>Biyo-Metrik Analiz</h1>
+    <div class="subtitle">Kamera PPG & HRV Simülasyonu</div>
+
+    <div class="dashboard">
+        
+        <!-- Kalp Atışı Kartı -->
+        <div class="card">
+            <div class="info-title" style="color: var(--accent-red);">1. Kalp Ritmi (BPM)</div>
+            <div id="status">Kamerayı başlatmak için dokunun</div>
+            <div class="bpm-container">
+                <div id="bpm-circle">--</div>
+            </div>
+            <button id="startBtn">Sistemi Başlat</button>
+        </div>
+
+        <!-- Beyin Analizi Kartı -->
+        <div class="card">
+            <div class="info-title brain">2. Bilişsel Durum Tahmini</div>
+            <div id="brain-desc" class="desc">
+                <em>Nabız verisi bekleniyor...</em>
+            </div>
+        </div>
+
+        <!-- Müzik Önerisi Kartı -->
+        <div class="card">
+            <div class="info-title music">3. Müzik & Frekans Önerisi</div>
+            <div id="music-desc" class="desc">
+                <em>Analiz bekleniyor...</em>
+            </div>
+        </div>
+
+    </div>
+
+    <video id="videoElement" autoplay playsinline></video>
+    <canvas id="canvasElement" width="50" height="50"></canvas>
+
+    <script>
+        const video = document.getElementById('videoElement');
+        const canvas = document.getElementById('canvasElement');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        
+        const bpmDisplay = document.getElementById('bpm-circle');
+        const statusText = document.getElementById('status');
+        const startBtn = document.getElementById('startBtn');
+        const brainDesc = document.getElementById('brain-desc');
+        const musicDesc = document.getElementById('music-desc');
+
+        let isRunning = false;
+        let animationId;
+        
+        const redValues = [];
+        const MAX_HISTORY = 60;
+        let lastBeatTime = 0;
+        let beatIntervals = [];
+
+        startBtn.addEventListener('click', async () => {
+            if (isRunning) {
+                stopMonitor();
+                return;
+            }
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment", advanced: [{ torch: true }] }
+                });
+
+                video.srcObject = stream;
+                
+                video.onloadedmetadata = () => {
+                    video.play();
+                    isRunning = true;
+                    startBtn.innerText = "Sistemi Durdur";
+                    startBtn.style.backgroundColor = "#747d8c";
+                    statusText.innerText = "Parmağınızı kameraya tam yerleştirin...";
+                    processFrame();
+                };
+            } catch (err) {
+                statusText.innerText = "Kamera erişim izni reddedildi.";
+                console.error(err);
+            }
+        });
+
+        function stopMonitor() {
+            isRunning = false;
+            startBtn.innerText = "Sistemi Başlat";
+            startBtn.style.backgroundColor = "var(--accent-red)";
+            statusText.innerText = "Durduruldu.";
+            bpmDisplay.innerText = "--";
+            brainDesc.innerHTML = "<em>Nabız verisi bekleniyor...</em>";
+            musicDesc.innerHTML = "<em>Analiz bekleniyor...</em>";
+            cancelAnimationFrame(animationId);
+            
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+            }
+            redValues.length = 0;
+            beatIntervals.length = 0;
+        }
+
+        function processFrame() {
+            if (!isRunning) return;
+
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            
+            let redSum = 0, greenSum = 0;
+
+            for (let i = 0; i < frame.data.length; i += 4) {
+                redSum += frame.data[i];
+                greenSum += frame.data[i+1];
+            }
+
+            const pixelCount = frame.data.length / 4;
+            const redAverage = redSum / pixelCount;
+            const greenAverage = greenSum / pixelCount;
+
+            // Kırmızılık oranıyla parmağın kamerada olup olmadığını tespit et
+            if (redAverage < 150 || (redAverage - greenAverage) < 50) {
+                statusText.innerText = "Parmağınızı kameraya tam yerleştirin.";
+                bpmDisplay.innerText = "--";
+                redValues.length = 0; 
+            } else {
+                statusText.innerText = "Sinyal alınıyor, sabit tutun...";
+                analyzeSignal(redAverage);
+            }
+
+            animationId = requestAnimationFrame(processFrame);
+        }
+
+        function analyzeSignal(currentRed) {
+            redValues.push(currentRed);
+            if (redValues.length > MAX_HISTORY) redValues.shift();
+            if (redValues.length < 30) return;
+
+            const mean = redValues.reduce((a, b) => a + b, 0) / redValues.length;
+            const threshold = mean * 0.995; // Tepe noktası hassasiyeti
+            const now = performance.now();
+
+            if (currentRed < threshold) {
+                const timeSinceLastBeat = now - lastBeatTime;
+                
+                // 300ms - 1500ms arası (40 - 200 BPM bandı filtresi)
+                if (timeSinceLastBeat > 300 && timeSinceLastBeat < 1500) {
+                    lastBeatTime = now;
+                    const currentBPM = 60000 / timeSinceLastBeat;
+                    beatIntervals.push(currentBPM);
+                    
+                    if (beatIntervals.length > 6) beatIntervals.shift();
+
+                    // Animasyon tetikleyici
+                    bpmDisplay.style.transform = "scale(1.15)";
+                    setTimeout(() => bpmDisplay.style.transform = "scale(1)", 150);
+
+                    // Sabitlenen Ortalama BPM'i hesapla
+                    const avgBPM = Math.round(beatIntervals.reduce((a, b) => a + b, 0) / beatIntervals.length);
+                    bpmDisplay.innerText = avgBPM;
+
+                    // BPM stabil ise Dashboard'u güncelle
+                    if (beatIntervals.length >= 4) {
+                        updateDashboard(avgBPM);
+                    }
+                } else if (timeSinceLastBeat >= 1500) {
+                    lastBeatTime = now;
+                }
+            }
+        }
+
+        // Nabza göre Zihin ve Müzik profillemesi
+        function updateDashboard(bpm) {
+            if (bpm < 65) {
+                brainDesc.innerHTML = `
+                    <strong>Durum:</strong> Derin Dinlenme / Gevşeme<br>
+                    <strong>Baskın Dalga:</strong> Teta / Düşük Alfa (4-12 Hz)<br>
+                    <span style="font-size:0.85rem; color:#a4b0be; display:block; margin-top:5px;">
+                    Zihin ve beden minimum enerji tüketiminde. Meditatif veya uykuya hazırlık evresi.</span>`;
+                
+                musicDesc.innerHTML = `
+                    <strong>Tavsiye Tür:</strong> Ambient, Lo-Fi, Binaural Beats<br>
+                    <strong>Odak Frekans:</strong> 432 Hz veya 528 Hz<br>
+                    <span style="font-size:0.85rem; color:#a4b0be; display:block; margin-top:5px;">
+                    <em>Örn: 'Weightless' - Marconi Union veya Spotify 'Deep Focus'</em></span>`;
+            } 
+            else if (bpm >= 65 && bpm < 95) {
+                brainDesc.innerHTML = `
+                    <strong>Durum:</strong> Uyanık / Aktif Odak<br>
+                    <strong>Baskın Dalga:</strong> Beta (12-30 Hz)<br>
+                    <span style="font-size:0.85rem; color:#a4b0be; display:block; margin-top:5px;">
+                    Günlük bilişsel faaliyetler, problem çözme ve analitik düşünme evresi. İdeal çalışma ritmi.</span>`;
+                
+                musicDesc.innerHTML = `
+                    <strong>Tavsiye Tür:</strong> Deep House, Indie Pop, Enstrümantal<br>
+                    <strong>Odak Frekans:</strong> Vokal içermeyen ritmik yapılar<br>
+                    <span style="font-size:0.85rem; color:#a4b0be; display:block; margin-top:5px;">
+                    <em>Örn: Spotify 'Brain Food' veya 'Chill Tracks' çalma listeleri</em></span>`;
+            } 
+            else {
+                brainDesc.innerHTML = `
+                    <strong>Durum:</strong> Efor / Yüksek Stres / Heyecan<br>
+                    <strong>Baskın Dalga:</strong> Yüksek Beta / Gama (30+ Hz)<br>
+                    <span style="font-size:0.85rem; color:#a4b0be; display:block; margin-top:5px;">
+                    Kortizol veya adrenalin yüksek. Spor yapılıyorsa normal; masa başındaysa stres göstergesi.</span>`;
+                
+                musicDesc.innerHTML = `
+                    <strong>Sakinleşmek İçin:</strong> Klasik Müzik (Chopin, Bach) veya Akustik<br>
+                    <strong>Antrenman İçin:</strong> Uptempo Rock, Techno, EDM (120+ BPM)<br>
+                    <span style="font-size:0.85rem; color:#a4b0be; display:block; margin-top:5px;">
+                    <em>Örn: 'Beast Mode' antrenman listesi veya 'Sakinleştirici Akustik'</em></span>`;
+            }
+        }
+    </script>
+</body>
+</html>
